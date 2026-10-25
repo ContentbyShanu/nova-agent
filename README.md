@@ -1,4 +1,4 @@
-# ✨ Nova — Voice + AI Command Automation Agent
+ # ✨ Nova — Voice + AI Command Automation Agent
 
 Soft-themed chat agent that runs **100% in the browser**. Type or speak a command; Nova plans, picks tools, executes. **No API keys, no backend, no cost.**
 
@@ -13,9 +13,10 @@ Soft-themed chat agent that runs **100% in the browser**. Type or speak a comman
 `Voice/Text → (optional LLM planner) → Intent router → Async tools → Chat output (+ speech)`
 Add a tool by adding one object (`re` + `run`) to the `tools` array in `index.html`.
 
-## Run
-- Online: GitHub Pages link (recommended, HTTPS needed for mic + AI)
-- Local: `python -m http.server 8000` then open http://localhost:8000
+## Live Demo
+🔗 https://contentbyshanu.github.io/nova-agent/
+
+Open the live link in desktop Chrome or Edge (HTTPS is needed for mic + AI mode).
 
 ## Browser support
 Voice: Chrome / Edge. AI mode: desktop Chrome / Edge with WebGPU (first load downloads the model, then cached).
