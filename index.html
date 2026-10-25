@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nova — Command Automation Agent</title>
+<style>
+:root{--bg1:#f3e8ff;--bg2:#ffe8e0;--card:rgba(255,255,255,.65);--ink:#3b3350;--mute:#8a82a0;--acc:#9b7bff;--acc2:#ffb1a1;--user:#e4d9ff;--bot:#fff;--line:rgba(155,123,255,.18)}
+:root[data-theme=dark]{--bg1:#1d1a2b;--bg2:#2a2036;--card:rgba(44,38,64,.7);--ink:#ece8f7;--mute:#a59ec0;--user:#4a3d7a;--bot:#352e4d;--line:rgba(255,255,255,.1)}
+*{box-sizing:border-box;margin:0}
+body{font-family:Inter,system-ui,sans-serif;color:var(--ink);min-height:100vh;display:flex;justify-content:center;padding:20px;background:linear-gradient(135deg,var(--bg1),var(--bg2)) fixed}
+.app{width:100%;max-width:760px;height:calc(100vh - 40px);display:flex;flex-direction:column;background:var(--card);backdrop-filter:blur(18px);border:1px solid var(--line);border-radius:28px;box-shadow:0 20px 60px rgba(155,123,255,.18);overflow:hidden}
+header{padding:18px 24px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line)}
+.logo{width:40px;height:40px;border-radius:14px;background:linear-gradient(135deg,var(--acc),var(--acc2));display:grid;place-items:center;color:#fff;font-weight:700}
+header h1{font-size:17px}header p{font-size:12px;color:var(--mute)}
+#log{flex:1;overflow-y:auto;padding:22px;display:flex;flex-direction:column;gap:12px}
+.msg{max-width:82%;padding:12px 16px;border-radius:18px;line-height:1.5;font-size:14.5px;white-space:pre-wrap;animation:in .35s ease both;box-shadow:0 4px 14px rgba(0,0,0,.05)}
+.u{align-self:flex-end;background:var(--user);border-bottom-right-radius:6px}
+.b{align-self:flex-start;background:var(--bot);border-bottom-left-radius:6px}
+.step{font-size:11px;color:var(--mute);margin-bottom:4px;letter-spacing:.04em;text-transform:uppercase}
+.b a{color:var(--acc)}
+@keyframes in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.chips{display:flex;gap:8px;flex-wrap:wrap;padding:0 22px 10px}
+.chips button{border:1px solid var(--line);background:var(--bot);color:var(--ink);padding:7px 13px;border-radius:999px;font-size:12.5px;cursor:pointer;transition:.2s}
+.chips button:hover{transform:translateY(-2px);border-color:var(--acc)}
+form{display:flex;gap:10px;padding:14px 18px 18px;border-top:1px solid var(--line)}
+input{flex:1;border:1px solid var(--line);background:var(--bot);color:var(--ink);padding:14px 18px;border-radius:16px;font-size:15px;outline:none;transition:.2s}
+input:focus{border-color:var(--acc);box-shadow:0 0 0 4px rgba(155,123,255,.15)}
+form button{border:0;padding:0 24px;border-radius:16px;color:#fff;font-weight:600;cursor:pointer;background:linear-gradient(135deg,var(--acc),var(--acc2));transition:.2s}
+form button:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(155,123,255,.35)}
+.pill{margin-left:auto;border:1px solid var(--line);background:var(--bot);color:var(--ink);padding:8px 14px;border-radius:999px;font-size:12.5px;cursor:pointer;transition:.2s}
+.pill:hover{border-color:var(--acc)}
+#mic{padding:0 18px;font-size:18px}
+#mic.on{animation:pulse 1s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 8px rgba(155,123,255,.3)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header><div class="logo">N</div><div><h1>Nova</h1><p>Type or speak a command. I'll do the work. No API key needed.</p></div><button class="pill" id="ai">AI mode: off</button></header>
+  <div id="log"></div>
+  <div class="chips" id="chips"></div>
+  <form id="f"><input id="in" placeholder='Try: add task buy milk and then timer 10 sec and then weather in Delhi' autocomplete="off"><button type="button" id="mic" title="Speak a command">🎤</button><button>Run</button></form>
+</div>
+
+<script>
+const $=s=>document.querySelector(s), log=$('#log');
+const store={get:(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}},set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}}};
+let tasks=store.get('tasks',[]), notes=store.get('notes',[]);
+
+function add(text,cls,label){const d=document.createElement('div');d.className='msg '+cls;
+  if(label){const s=document.createElement('div');s.className='step';s.textContent=label;d.appendChild(s)}
+  const t=document.createElement('span');t.innerHTML=text;d.appendChild(t);log.appendChild(d);log.scrollTop=log.scrollHeight;return t}
+const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+const SITES={youtube:'youtube.com',google:'google.com',github:'github.com',gmail:'mail.google.com',linkedin:'linkedin.com',instagram:'instagram.com',whatsapp:'web.whatsapp.com',chatgpt:'chat.openai.com',maps:'maps.google.com'};
+const JOKES=["Why do programmers prefer dark mode? Because light attracts bugs.","I told my computer I needed a break. Now it won't stop sending me Kit-Kat ads.","There are 10 types of people: those who get binary and those who don't."];
+
+function beep(){try{const c=new AudioContext(),o=c.createOscillator();o.connect(c.destination);o.frequency.value=720;o.start();setTimeout(()=>{o.stop();c.close()},600)}catch{}}
+
+// ---- TOOLS: each has a regex and an async run(match) returning HTML ----
+const tools=[
+ {name:'Tasks',re:/^(?:add task|task add|todo|add todo)\s+(.+)/i,run:m=>{tasks.push({t:m[1],d:false});store.set('tasks',tasks);return `Task added: <b>${esc(m[1])}</b>`}},
+ {name:'Tasks',re:/^(?:show|list|my)\s*(?:tasks|todos?)$/i,run:()=>tasks.length?tasks.map((x,i)=>`${i+1}. ${x.d?'✅':'⬜'} ${esc(x.t)}`).join('\n'):'No tasks yet.'},
+ {name:'Tasks',re:/^(?:done|complete)\s+(\d+)/i,run:m=>{const x=tasks[m[1]-1];if(!x)return 'Task not found.';x.d=true;store.set('tasks',tasks);return `Marked done: ${esc(x.t)}`}},
+ {name:'Tasks',re:/^clear (?:tasks|todos?)$/i,run:()=>{tasks=[];store.set('tasks',tasks);return 'All tasks cleared.'}},
+ {name:'Notes',re:/^(?:note|save note|add note)\s+(.+)/i,run:m=>{notes.push(m[1]);store.set('notes',notes);return `Note saved (${notes.length} total).`}},
+ {name:'Notes',re:/^(?:show|list)\s*notes$/i,run:()=>notes.length?notes.map((n,i)=>`${i+1}. ${esc(n)}`).join('\n'):'No notes yet.'},
+ {name:'Timer',re:/^(?:remind me in|timer|set timer|set a timer for)\s*(\d+)\s*(sec|s|min|m|hour|h)\w*(?:\s+(?:to|for)\s+(.+))?/i,run:m=>{
+   const n=+m[1],u=m[2][0].toLowerCase(),ms=n*(u=='h'?3600000:u=='m'?60000:1000),what=m[3]||'Timer finished';
+   setTimeout(()=>{beep();add(`⏰ ${esc(what)}`,'b','Reminder')},ms);return `Timer set for ${n} ${m[2]}. I'll ping you here.`}},
+ {name:'Calculator',re:/^(?:calc|calculate|what is|=)?\s*([\d\s+\-*/().%^]{3,})$/i,run:m=>{
+   const e=m[1].replace(/\^/g,'**');if(!/^[\d\s+\-*/().%*]+$/.test(e))return 'Invalid expression.';
+   try{return `${esc(m[1].trim())} = <b>${Function('"use strict";return ('+e+')')()}</b>`}catch{return 'Could not calculate that.'}}},
+ {name:'Browser',re:/^(?:open|kholo|launch)\s+(\w+)/i,run:m=>{const s=SITES[m[1].toLowerCase()];if(!s)return `I don't know "${m[1]}". Try: ${Object.keys(SITES).join(', ')}`;
+   window.open('https://'+s,'_blank');return `Opened <a href="https://${s}" target="_blank">${s}</a> (allow popups if blocked)`}},
+ {name:'Search',re:/^(?:youtube|yt)\s+(.+)/i,run:m=>{const u='https://www.youtube.com/results?search_query='+encodeURIComponent(m[1]);window.open(u,'_blank');return `Searching YouTube for <b>${esc(m[1])}</b>`}},
+ {name:'Search',re:/^(?:search|google)\s+(.+)/i,run:m=>{const u='https://www.google.com/search?q='+encodeURIComponent(m[1]);window.open(u,'_blank');return `Searching Google for <b>${esc(m[1])}</b>`}},
+ {name:'Weather',re:/^weather(?:\s+in)?\s+(.+)/i,run:async m=>{
+   const g=await (await fetch('https://geocoding-api.open-meteo.com/v1/search?count=1&name='+encodeURIComponent(m[1]))).json();
+   if(!g.results)return 'City not found.';const {latitude:la,longitude:lo,name,country}=g.results[0];
+   const w=(await (await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${la}&longitude=${lo}&current=temperature_2m,wind_speed_10m,relative_humidity_2m`)).json()).current;
+   return `🌤 <b>${esc(name)}, ${esc(country)}</b>\nTemp: ${w.temperature_2m}°C · Humidity: ${w.relative_humidity_2m}% · Wind: ${w.wind_speed_10m} km/h`}},
+ {name:'Knowledge',re:/^(?:who is|what is|who was|wiki|tell me about)\s+(.+)/i,run:async m=>{
+   const r=await fetch('https://en.wikipedia.org/api/rest_v1/page/summary/'+encodeURIComponent(m[1].replace(/\?$/,'').trim()));
+   if(!r.ok)return `No summary found for "${esc(m[1])}".`;const j=await r.json();return `<b>${esc(j.title)}</b>\n${esc(j.extract)}\n<a href="${j.content_urls.desktop.page}" target="_blank">Read more</a>`}},
+ {name:'Time',re:/^(?:time|date|what time.*|today)$/i,run:()=>new Date().toLocaleString()},
+ {name:'Password',re:/^(?:password|generate password)(?:\s+(\d+))?$/i,run:m=>{const n=Math.min(+m[1]||14,64),c='abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%';
+   const a=crypto.getRandomValues(new Uint32Array(n));return `🔐 <code>${[...a].map(x=>c[x%c.length]).join('')}</code>`}},
+ {name:'Fun',re:/^(?:joke|make me laugh)$/i,run:()=>JOKES[Math.random()*JOKES.length|0]},
+ {name:'Theme',re:/^(dark|light) mode$/i,run:m=>{document.documentElement.dataset.theme=m[1].toLowerCase();store.set('theme',m[1].toLowerCase());return `${m[1]} mode on.`}},
+ {name:'Help',re:/^help$/i,run:()=>`I can do (chain with "and then"):\n• add task X · show tasks · done 1 · clear tasks\n• note X · show notes\n• timer 10 sec / remind me in 5 min to X\n• 25*4+10\n• open youtube · search X · youtube X\n• weather in Mumbai · who is Elon Musk\n• password 16 · joke · time · dark mode`}
+];
+
+// ---- AGENT LOOP: plan (split) → route (match tool) → execute → report ----
+const plan=t=>t.split(/\s+(?:and then|then|aur phir|phir)\s+|;/i).map(s=>s.trim()).filter(Boolean);
+
+// ---- VOICE (Web Speech API, free) ----
+let speakNext=false;
+const say=t=>{if(!speakNext||!window.speechSynthesis)return;const u=new SpeechSynthesisUtterance(String(t).replace(/<[^>]+>/g,''));u.lang='en-IN';speechSynthesis.speak(u)};
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+$('#mic').onclick=()=>{
+  if(!SR){add('Voice input needs Chrome or Edge.','b','Voice');return}
+  const r=new SR();r.lang='en-IN';
+  r.onstart=()=>$('#mic').classList.add('on');r.onend=()=>$('#mic').classList.remove('on');
+  r.onresult=e=>{speakNext=true;runCommand(e.results[0][0].transcript)};r.start()};
+
+// ---- AI MODE (WebLLM: LLM runs inside the browser, no API key) ----
+const MODEL='Llama-3.2-1B-Instruct-q4f16_1-MLC'; // change to any model from the WebLLM prebuilt list
+let engine=null,aiOn=false;
+async function loadAI(){
+  if(!navigator.gpu){add('AI mode needs WebGPU (desktop Chrome/Edge). Rule mode still works.','b','AI');return false}
+  const out=add('Loading AI model… first time is a big download, then it is cached.','b','AI');
+  try{const {CreateMLCEngine}=await import('https://esm.run/@mlc-ai/web-llm');
+    engine=await CreateMLCEngine(MODEL,{initProgressCallback:p=>out.textContent='Loading AI… '+Math.round(p.progress*100)+'%'});
+    out.textContent='AI ready ✅';return true}catch(e){out.textContent='AI failed: '+e.message;return false}}
+$('#ai').onclick=async()=>{
+  if(aiOn){aiOn=false;$('#ai').textContent='AI mode: off';return}
+  $('#ai').textContent='AI mode: loading…';
+  if(engine||await loadAI()){aiOn=true;$('#ai').textContent='AI mode: on'}else $('#ai').textContent='AI mode: off'};
+async function aiPlan(text){
+  const sys=`You are Nova's planner. Convert the user's request into commands from the list. Reply ONLY with JSON: {"commands":["..."],"reply":"short text or empty"}.
+Commands: add task X | show tasks | done N | clear tasks | note X | show notes | timer N sec/min | math like 12*5 | open youtube/google/github/gmail/linkedin/instagram/whatsapp/maps | search X | youtube X | weather in CITY | who is X | password N | joke | time | dark mode | light mode.
+If it is only conversation, return empty commands and put the answer in reply. The user may write Hinglish.`;
+  const r=await engine.chat.completions.create({messages:[{role:'system',content:sys},{role:'user',content:text}],temperature:0.2});
+  const c=r.choices[0].message.content,m=c.match(/\{[\s\S]*\}/);
+  try{return m?JSON.parse(m[0]):{commands:[],reply:c}}catch{return {commands:[],reply:c}}}
+
+// ---- AGENT LOOP ----
+async function runCommand(text){
+  add(esc(text),'u');
+  let steps=plan(text);
+  if(aiOn&&!steps.every(s=>tools.some(t=>t.re.test(s)))){
+    const o=add('Planning with AI…','b','AI');
+    try{const p=await aiPlan(text);
+      if(p.commands&&p.commands.length){o.textContent='Plan: '+p.commands.join('  →  ');steps=p.commands}
+      else{o.textContent=p.reply||'Done.';say(o.textContent);speakNext=false;return}}
+    catch(e){o.textContent='AI error, using rules instead.'}}
+  for(let i=0;i<steps.length;i++){
+    const s=steps[i],tool=tools.find(t=>t.re.test(s));
+    const out=add('Thinking…','b',steps.length>1?`Step ${i+1}/${steps.length}`:(tool?tool.name:'Nova'));
+    await sleep(350);
+    if(!tool){out.innerHTML=`I didn't understand "<b>${esc(s)}</b>". Turn on AI mode or type <b>help</b>.`;continue}
+    try{out.innerHTML=await tool.run(s.match(tool.re))}catch(e){out.innerHTML='Something failed: '+esc(e.message)}
+    say(out.textContent);log.scrollTop=log.scrollHeight}
+  speakNext=false}
+
+$('#f').onsubmit=e=>{e.preventDefault();const v=$('#in').value.trim();if(!v)return;$('#in').value='';runCommand(v)};
+['help','add task buy milk and then show tasks','weather in Ludhiana','who is APJ Abdul Kalam','password 16','open youtube'].forEach(c=>{
+  const b=document.createElement('button');b.textContent=c;b.onclick=()=>runCommand(c);$('#chips').appendChild(b)});
+document.documentElement.dataset.theme=store.get('theme','light');
+add("Hi, main <b>Nova</b> hoon ✨ Mujhe command do, main kaam kar dungi. Multiple kaam ek saath chain karo, jaise:\n<i>add task study and then timer 30 sec and then joke</i>\n\nType <b>help</b> for everything I can do.",'b');
+</script>
+</body>
+</html>
